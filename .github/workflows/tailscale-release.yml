@@ -29,7 +29,7 @@ jobs:
       run: |
         docker create --name ts tailscale/tailscale:${{ env.TAILSCALE_VERSION }}
         docker inspect ts
-        docker cp ts:/usr/local/bin /tmp/tailscale-bin
+        sudo docker cp ts:/usr/local/bin /tmp/tailscale-bin
         docker rm ts
         sudo mv /tmp/tailscale-bin bin
         sudo chown -R $(id -u):$(id -g) bin
