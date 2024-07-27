@@ -27,7 +27,7 @@ jobs:
         docker create --name ts tailscale/tailscale:${{ env.TAILSCALE_VERSION }}
         docker cp ts:/usr/local/bin .
         docker rm ts
-        sudo chmod -R 755 bin
+        sudo chown -R $(id -u):$(id -g) bin
 
     - name: Create tar.gz archive
       run: tar -czf tailscale-bin-${{ steps.get_version.outputs.version }}.tar.gz -C bin .
