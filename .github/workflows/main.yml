@@ -1,0 +1,53 @@
+name: Tailscale Binary Release
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # Run daily at midnight UTC
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Get latest Tailscale version
+      id: get_version
+      run: |
+        LATEST_VERSION=$(curl -s "https://api.github.com/repos/tailscale/tailscale/releases/latest" | grep tag_name | cut -d '"' -f 4)
+        echo "TAILSCALE_VERSION=${LATEST_VERSION}" >> $GITHUB_ENV
+        echo "::set-output name=version::${LATEST_VERSION}"
+
+    - name: Pull Tailscale Docker image
+      run: docker pull tailscale/tailscale:${{ env.TAILSCALE_VERSION }}
+
+    - name: Create container and extract binaries
+      run: |
+        docker create --name ts tailscale/tailscale:${{ env.TAILSCALE_VERSION }}
+        docker cp ts:/usr/local/bin .
+        docker rm ts
+
+    - name: Create tar.gz archive
+      run: tar -czf tailscale-bin-${{ steps.get_version.outputs.version }}.tar.gz -C bin .
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.get_version.outputs.version }}
+        release_name: Tailscale Binaries ${{ steps.get_version.outputs.version }}
+        draft: false
+        prerelease: false
+
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./tailscale-bin-${{ steps.get_version.outputs.version }}.tar.gz
+        asset_name: tailscale-bin-${{ steps.get_version.outputs.version }}.tar.gz
+        asset_content_type: application/gzip
