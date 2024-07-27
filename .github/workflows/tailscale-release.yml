@@ -28,7 +28,8 @@ jobs:
     - name: Create container and extract binaries
       run: |
         docker create --name ts tailscale/tailscale:${{ env.TAILSCALE_VERSION }}
-        docker cp ts:/usr/local/bin .
+        docker inspect ts
+        docker cp ts:/usr/local/bin bin
         docker rm ts
         sudo chown -R $(id -u):$(id -g) bin
         sudo chmod -R 755 bin
