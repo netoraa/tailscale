@@ -1,0 +1,37 @@
+name: Tailscale Binary Release
+
+on:
+  push:
+    branches: [releases]
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Get latest Tailscale version
+      id: version
+      run: |
+        VER=$(curl -s "https://api.github.com/repos/tailscale/tailscale/releases/latest" | grep tag_name | cut -d '"' -f 4)
+        echo "TAILSCALE_VERSION=$VER" >> $GITHUB_ENV
+        echo "::set-output name=version::$VER"
+
+    - name: Extract binaries
+      run: |
+        docker create --name ts tailscale/tailscale:${{ env.TAILSCALE_VERSION }}
+        sudo docker cp ts:/usr/local/bin bin
+        docker rm ts
+        sudo chown -R $(id -u):$(id -g) bin
+        tar -czf tailscale-bin-${{ steps.version.outputs.version }}.tar.gz -C bin .
+
+    - name: Create/Update Releases
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        gh release create -R netoraa/tailscale ${{ steps.version.outputs.version }} tailscale-bin-${{ steps.version.outputs.version }}.tar.gz --title "Tailscale Binaries ${{ steps.version.outputs.version }}" --notes "Tailscale binaries version ${{ steps.version.outputs.version }}" || true
+        gh release delete -R netoraa/tailscale latest --yes || true
+        gh release create -R netoraa/tailscale latest tailscale-bin-${{ steps.version.outputs.version }}.tar.gz --title "Tailscale Binaries (Latest)" --notes "Latest Tailscale binaries" || true
