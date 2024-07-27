@@ -32,6 +32,7 @@ jobs:
         docker rm ts
         sudo chown -R $(id -u):$(id -g) bin
         sudo chmod -R 755 bin
+        ls -lah bin
 
     - name: Create tar.gz archive
       run: tar -czf tailscale-bin-${{ steps.get_version.outputs.version }}.tar.gz -C bin .
