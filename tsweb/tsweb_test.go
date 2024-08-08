@@ -22,6 +22,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	"tailscale.com/cmd/testwrapper/flakytest"
 	"tailscale.com/metrics"
 	"tailscale.com/tstest"
 	"tailscale.com/util/httpm"
@@ -864,6 +865,7 @@ func TestStdHandler_CanceledAfterHeader(t *testing.T) {
 }
 
 func TestStdHandler_ConnectionClosedDuringBody(t *testing.T) {
+	flakytest.Mark(t, "https://github.com/tailscale/tailscale/issues/13017")
 	now := time.Now()
 
 	// Start a HTTP server that returns 1MB of data.
@@ -1019,6 +1021,62 @@ func TestStdHandler_OnErrorPanic(t *testing.T) {
 		t.Errorf("got body %q, want %q", body, want)
 	}
 	res.Body.Close()
+}
+
+func TestLogHandler_QuietLogging(t *testing.T) {
+	now := time.Now()
+	var logs []string
+	logf := func(format string, args ...any) {
+		logs = append(logs, fmt.Sprintf(format, args...))
+	}
+
+	var done bool
+	onComp := func(r *http.Request, alr AccessLogRecord) {
+		if done {
+			t.Fatal("expected only one OnCompletion call")
+		}
+		done = true
+
+		want := AccessLogRecord{
+			Time:       now,
+			RemoteAddr: "192.0.2.1:1234",
+			Proto:      "HTTP/1.1",
+			Host:       "example.com",
+			Method:     "GET",
+			RequestURI: "/",
+			Code:       200,
+		}
+		if diff := cmp.Diff(want, alr); diff != "" {
+			t.Fatalf("unexpected OnCompletion AccessLogRecord (-want +got):\n%s", diff)
+		}
+	}
+
+	LogHandler(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(200)
+			w.WriteHeader(201) // loggingResponseWriter will write a warning.
+		}),
+		LogOptions{
+			Logf:         logf,
+			OnCompletion: onComp,
+			QuietLogging: true,
+			Now:          func() time.Time { return now },
+		},
+	).ServeHTTP(
+		httptest.NewRecorder(),
+		httptest.NewRequest("GET", "/", nil),
+	)
+
+	if !done {
+		t.Fatal("OnCompletion call didn't happen")
+	}
+
+	wantLogs := []string{
+		"[unexpected] HTTP handler set statusCode twice (200 and 201)",
+	}
+	if diff := cmp.Diff(wantLogs, logs); diff != "" {
+		t.Fatalf("logs (-want +got):\n%s", diff)
+	}
 }
 
 func TestErrorHandler_Panic(t *testing.T) {
